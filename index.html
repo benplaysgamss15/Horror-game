@@ -2,16 +2,18 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>System Override: Sector 4</title>
     <style>
         body {
             background: #050505;
             color: #0f0;
             font-family: 'Courier New', Courier, monospace;
-            padding: 20px;
+            padding: 50px 20px 20px 20px; /* Added top padding to clear fixed header */
+            box-sizing: border-box;
             overflow-x: hidden;
             margin: 0;
-            height: 100vh;
+            height: 100dvh; /* 100dvh prevents mobile browser toolbars from hiding the input */
             display: flex;
             flex-direction: column;
         }
@@ -21,23 +23,28 @@
             right: 20px;
             color: red;
             font-weight: bold;
+            background: rgba(5, 5, 5, 0.9); /* Ensures readability on mobile when scrolling */
+            padding: 5px;
+            border-radius: 3px;
         }
         #output {
             white-space: pre-wrap;
             margin-bottom: 10px;
             flex-grow: 1;
             overflow-y: auto;
+            word-wrap: break-word; /* Prevents text from breaking layout on narrow screens */
         }
         #input-area {
             display: flex;
             align-items: center;
+            padding-bottom: 10px; /* Safe area for bottom of screen */
         }
         input {
             background: transparent;
             border: none;
             color: #0f0;
             font-family: inherit;
-            font-size: 16px;
+            font-size: 16px; /* 16px is required to stop iOS from auto-zooming on tap */
             outline: none;
             width: 100%;
             margin-left: 10px;
@@ -52,6 +59,20 @@
             50% { transform: translate(-2px, -2px); }
             100% { transform: translate(1px, 2px); }
         }
+
+        /* Mobile Adjustments */
+        @media (max-width: 600px) {
+            #hull-display {
+                top: 10px;
+                right: 10px;
+                font-size: 14px;
+            }
+            body {
+                padding-top: 45px;
+                padding-left: 15px;
+                padding-right: 15px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -60,7 +81,7 @@
     <div id="output"></div>
     <div id="input-area">
         <span>></span>
-        <input type="text" id="cmd" autocomplete="off" autofocus>
+        <input type="text" id="cmd" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" autofocus>
     </div>
 
     <script>
@@ -76,6 +97,13 @@
             logsRead: 0
         };
 
+        // Mobile UX: Tapping anywhere on the screen refocuses the input so the keyboard stays up
+        document.addEventListener('click', () => {
+            if (!gameState.gameOver && !input.disabled) {
+                input.focus();
+            }
+        });
+
         // Slow-Typing Trick
         async function printText(text, speed = 30) {
             input.disabled = true;
@@ -88,8 +116,10 @@
                 await new Promise(r => setTimeout(r, speed));
             }
             output.innerHTML += '<br>';
-            if (!gameState.gameOver) input.disabled = false;
-            input.focus();
+            if (!gameState.gameOver) {
+                input.disabled = false;
+                input.focus();
+            }
         }
 
         // Initialize Opening Scene
@@ -150,6 +180,7 @@
         function winGame() {
             gameState.gameOver = true;
             printText("OVERRIDE ACCEPTED. DOOR UNLOCKED.\n\n\"Oh thank god, the door is open! Wait... what is that in the hallway? NO—\"\n\n...CONNECTION TERMINATED...", 50);
+            input.disabled = true; // Prevents mobile keyboard from popping up after game over
         }
 
         // The Countdown Mechanic (Hull Integrity)
@@ -163,6 +194,7 @@
                 gameState.gameOver = true;
                 document.body.classList.add('glitch');
                 printText("\nCRITICAL PRESSURE FAILURE. FACILITY CRUSHED. SIGNAL LOST.", 50);
+                input.disabled = true;
             }
         }, 1200); // Drops 1% every 1.2 seconds
 
