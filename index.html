@@ -9,11 +9,11 @@
             background: #050505;
             color: #0f0;
             font-family: 'Courier New', Courier, monospace;
-            padding: 50px 20px 20px 20px; /* Added top padding to clear fixed header */
+            padding: 50px 20px 20px 20px;
             box-sizing: border-box;
             overflow-x: hidden;
             margin: 0;
-            height: 100dvh; /* 100dvh prevents mobile browser toolbars from hiding the input */
+            height: 100dvh;
             display: flex;
             flex-direction: column;
         }
@@ -23,7 +23,7 @@
             right: 20px;
             color: red;
             font-weight: bold;
-            background: rgba(5, 5, 5, 0.9); /* Ensures readability on mobile when scrolling */
+            background: rgba(5, 5, 5, 0.9);
             padding: 5px;
             border-radius: 3px;
         }
@@ -32,24 +32,23 @@
             margin-bottom: 10px;
             flex-grow: 1;
             overflow-y: auto;
-            word-wrap: break-word; /* Prevents text from breaking layout on narrow screens */
+            word-wrap: break-word;
         }
         #input-area {
             display: flex;
             align-items: center;
-            padding-bottom: 10px; /* Safe area for bottom of screen */
+            padding-bottom: 10px;
         }
         input {
             background: transparent;
             border: none;
             color: #0f0;
             font-family: inherit;
-            font-size: 16px; /* 16px is required to stop iOS from auto-zooming on tap */
+            font-size: 16px;
             outline: none;
             width: 100%;
             margin-left: 10px;
         }
-        /* The Glitch Mechanic */
         .glitch {
             animation: shake 0.1s infinite;
             filter: invert(100%);
@@ -59,8 +58,6 @@
             50% { transform: translate(-2px, -2px); }
             100% { transform: translate(1px, 2px); }
         }
-
-        /* Mobile Adjustments */
         @media (max-width: 600px) {
             #hull-display {
                 top: 10px;
@@ -89,7 +86,6 @@
         const input = document.getElementById('cmd');
         const hullDisplay = document.getElementById('hull-display');
 
-        // Game State Structure
         const gameState = {
             hullIntegrity: 100,
             hasKey: false,
@@ -97,93 +93,96 @@
             logsRead: 0
         };
 
-        // Mobile UX: Tapping anywhere on the screen refocuses the input so the keyboard stays up
+        let isTyping = false; // Prevents command spam without closing mobile keyboard
+
+        // Tap to focus ensures keyboard stays active
         document.addEventListener('click', () => {
-            if (!gameState.gameOver && !input.disabled) {
-                input.focus();
-            }
+            if (!gameState.gameOver) input.focus();
         });
 
         // Slow-Typing Trick
         async function printText(text, speed = 30) {
-            input.disabled = true;
+            isTyping = true;
             const span = document.createElement('span');
             output.appendChild(span);
             
             for (let char of text) {
-                span.innerHTML += char;
-                output.scrollTop = output.scrollHeight; // Auto-scroll
+                span.textContent += char; // fixed bug: textContent avoids breaking HTML
+                output.scrollTop = output.scrollHeight;
                 await new Promise(r => setTimeout(r, speed));
             }
-            output.innerHTML += '<br>';
-            if (!gameState.gameOver) {
-                input.disabled = false;
-                input.focus();
-            }
+            
+            output.appendChild(document.createElement('br')); // fixed bug: safe appending
+            if (!gameState.gameOver) isTyping = false;
         }
 
-        // Initialize Opening Scene
-        const openingText = "SYSTEM INITIALIZED...\nCONNECTION ESTABLISHED: FACILITY_4_SUBMERGED\n...\nWARNING: UNSTABLE UPLINK DETECTED.\n\n\"Hello? Is this the new guy? Look, I don't have much time. The main door to the control room is jammed. The sensors are picking up heavy, wet dragging sounds in the ventilation shafts. Don't look at the cameras—just listen to me. I've left the access codes in the system logs. Get me out, or the pressure valves are going to blow.\"\n\nTYPE 'HELP' FOR COMMAND LIST.";
+        const openingText = "SYSTEM INITIALIZED...\nCONNECTION ESTABLISHED: FACILITY_4_SUBMERGED\n...\nWARNING: UNSTABLE UPLINK DETECTED.\n\n\"Hello? Is this the new guy? Look, I don't have much time. The main door to the control room is jammed. The sensors are picking up heavy, wet dragging sounds in the ventilation shafts. Don't look at the cameras—just listen to me. I've left the access codes in the system logs. Get me out, or the pressure valves are going to blow.\"\n\nTYPE 'HELP' FOR COMMAND LIST.\n";
         printText(openingText, 25);
 
-        // Input Listener
         input.addEventListener('keypress', (e) => {
             if (e.key === 'Enter' && input.value.trim() !== '') {
+                if (isTyping) return; // Ignore Enter if system is currently talking
+                
                 const command = input.value.trim().toUpperCase();
                 input.value = '';
-                printText(`> ${command}\n`, 0); // Instantly print what player typed
+                
+                // Instantly echo player's command to the screen safely
+                const cmdSpan = document.createElement('span');
+                cmdSpan.textContent = `> ${command}`;
+                output.appendChild(cmdSpan);
+                output.appendChild(document.createElement('br'));
+                output.scrollTop = output.scrollHeight;
+
                 handleInput(command);
             }
         });
 
-        // Command Logic
         function handleInput(command) {
             if (command === "HELP") {
-                printText("AVAILABLE: LIST_LOGS, READ [FILE], UNLOCK_DOOR");
+                printText("AVAILABLE: LIST_LOGS, READ [FILE], UNLOCK_DOOR\n");
             } 
             else if (command === "LIST_LOGS") {
-                printText("FILES FOUND:\n- log_01.txt\n- log_02.txt");
+                printText("FILES FOUND:\n- log_01.txt\n- log_02.txt\n");
             } 
             else if (command.startsWith("READ ")) {
                 gameState.logsRead++;
                 
-                // Entity Input Penalty (Too many reads)
                 if (gameState.logsRead > 2) {
                     document.body.classList.add('glitch');
-                    output.innerHTML = ''; // System deleting text
-                    printText("I  T O L D  Y O U  T O  H U R R Y .  T H E Y  A R E  H E R E .", 150);
+                    output.innerHTML = ''; 
+                    printText("I  T O L D  Y O U  T O  H U R R Y .  T H E Y  A R E  H E R E .\n", 150);
                     setTimeout(() => document.body.classList.remove('glitch'), 1500);
                 } 
-                else if (command === "READ LOG_01.TXT") {
-                    printText("LOG_01: The sounds are right outside the door now. Wet breathing. I locked the system down.");
+                else if (command === "READ LOG_01.TXT" || command === "READ LOG_01") {
+                    printText("LOG_01: The sounds are right outside the door now. Wet breathing. I locked the system down.\n");
                 } 
-                else if (command === "READ LOG_02.TXT") {
-                    printText("LOG_02: I'm attaching the override credentials to this file. Access granted to Terminal.");
+                else if (command === "READ LOG_02.TXT" || command === "READ LOG_02") {
+                    printText("LOG_02: I'm attaching the override credentials to this file. Access granted to Terminal.\n");
                     gameState.hasKey = true;
                 } 
                 else {
-                    printText("FILE NOT FOUND.");
+                    printText("FILE NOT FOUND.\n");
                 }
             } 
             else if (command === "UNLOCK_DOOR") {
                 if (gameState.hasKey) {
                     winGame();
                 } else {
-                    printText("ACCESS DENIED. REQUIRED KEY MISSING IN MEMORY.");
+                    printText("ACCESS DENIED. REQUIRED KEY MISSING IN MEMORY.\n");
                 }
             } 
             else {
-                printText("COMMAND NOT RECOGNIZED... OR ACCESS DENIED.");
+                printText("COMMAND NOT RECOGNIZED... OR ACCESS DENIED.\n");
             }
         }
 
         function winGame() {
             gameState.gameOver = true;
             printText("OVERRIDE ACCEPTED. DOOR UNLOCKED.\n\n\"Oh thank god, the door is open! Wait... what is that in the hallway? NO—\"\n\n...CONNECTION TERMINATED...", 50);
-            input.disabled = true; // Prevents mobile keyboard from popping up after game over
+            input.blur(); // Hides keyboard on game over
+            input.disabled = true;
         }
 
-        // The Countdown Mechanic (Hull Integrity)
         const hullInterval = setInterval(() => {
             if (gameState.gameOver) return clearInterval(hullInterval);
             
@@ -194,11 +193,11 @@
                 gameState.gameOver = true;
                 document.body.classList.add('glitch');
                 printText("\nCRITICAL PRESSURE FAILURE. FACILITY CRUSHED. SIGNAL LOST.", 50);
+                input.blur();
                 input.disabled = true;
             }
-        }, 1200); // Drops 1% every 1.2 seconds
+        }, 1200);
 
-        // The Glitch Mechanic (Fires every 30 seconds)
         setInterval(() => {
             if (!gameState.gameOver) {
                 document.body.classList.add('glitch');
