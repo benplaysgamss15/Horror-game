@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Moderator // SYS.ERR</title>
+    <style>
+        /* --- CSS: LAYOUT & HORROR EFFECTS --- */
+        :root {
+            --bg-dark: #202225;
+            --bg-mid: #2f3136;
+            --bg-light: #36393f;
+            --text-main: #dcddde;
+            --text-muted: #72767d;
+            --accent: #5865F2;
+            --danger: #ed4245;
+            --crt-opacity: 0.1;
+        }
+
+        body, html {
+            margin: 0; padding: 0; height: 100%;
+            background: #000; font-family: 'Courier New', monospace;
+            overflow: hidden; color: var(--text-main); user-select: none;
+        }
+
+        #app-container { display: flex; height: 100vh; width: 100vw; position: relative; }
+
+        /* CRT Filter Overlay */
+        .crt-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 100;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            background-size: 100% 2px, 3px 100%;
+            opacity: var(--crt-opacity);
+            transition: opacity 0.5s ease;
+        }
+
+        /* Sidebar UI */
+        #sidebar {
+            width: 250px; background: var(--bg-dark); padding: 20px;
+            display: flex; flex-direction: column; border-right: 1px solid #111; z-index: 10;
+        }
+
+        .server-name { margin-top: 0; font-size: 1.2rem; color: #fff; border-bottom: 1px solid var(--bg-light); padding-bottom: 10px; }
+        #channel-list { list-style: none; padding: 0; flex-grow: 1; }
+        .channel { padding: 10px; margin: 5px 0; background: var(--bg-mid); border-radius: 4px; cursor: pointer; transition: 0.2s; }
+        .channel:hover { background: var(--bg-light); }
+        .channel.active { background: var(--bg-light); color: #fff; font-weight: bold; }
+        .channel.locked { opacity: 0.5; color: var(--danger); text-decoration: line-through; }
+
+        #system-status { margin-top: auto; padding-top: 20px; border-top: 1px solid var(--bg-light); font-size: 0.9rem; }
+        .progress-bar { width: 100%; height: 10px; background: #111; margin-top: 5px; border-radius: 5px; overflow: hidden; }
+        #integrity-bar { width: 100%; height: 100%; background: #43b581; transition: width 0.5s, background-color 0.5s; }
+
+        /* Main 2.5D View */
+        #main-view { flex-grow: 1; position: relative; background: var(--bg-light); cursor: crosshair; }
+        canvas { display: block; width: 100%; height: 100%; background: radial-gradient(circle at center, #2a2c31 0%, #1a1b1e 100%); }
+
+        /* Moderation HUD Overlay */
+        #mod-hud {
+            position: absolute; bottom: -200px; left: 50%; transform: translateX(-50%);
+            background: rgba(32, 34, 37, 0.95); border: 1px solid var(--accent);
+            padding: 20px; border-radius: 8px; text-align: center;
+            box-shadow: 0 0 20px rgba(0,0,0,0.8); transition: bottom 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            z-index: 50; width: 400px;
+        }
+        #mod-hud.active { bottom: 30px; }
+        #mod-hud h3 { margin: 0 0 10px 0; color: #fff; }
+        #mod-hud p { margin: 0 0 20px 0; font-size: 0.9rem; color: var(--text-muted); }
+        
+        .mod-actions { display: flex; justify-content: space-between; gap: 10px; }
+        .mod-btn {
+            flex: 1; padding: 10px; border: none; border-radius: 4px;
+            background: var(--bg-light); color: #fff; cursor: pointer;
+            font-family: inherit; font-weight: bold; transition: 0.2s;
+        }
+        .mod-btn:hover { background: #4f545c; }
+        .mod-btn.danger { background: var(--danger); }
+        .mod-btn.danger:hover { background: #c9383b; }
+
+        /* Glitch Animation Classes */
+        .glitch { animation: glitch-skew 1s infinite linear alternate-reverse; }
+        @keyframes glitch-skew {
+            0% { transform: skew(0deg); }
+            20% { transform: skew(-10deg); }
+            40% { transform: skew(10deg); }
+            60% { transform: skew(0deg); }
+            100% { transform: skew(0deg); }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="crt-overlay" id="crt"></div>
+
+    <div id="app-container">
+        <!-- SIDEBAR -->
+        <div id="sidebar">
+            <h2 class="server-name" id="server-title">Decaying_Realm</h2>
+            <ul id="channel-list">
+                <li class="channel active"># general-chat</li>
+                <li class="channel"># announcements</li>
+                <li class="channel locked"># containment_zone</li>
+            </ul>
+            <div id="system-status">
+                <p>System Integrity: <span id="integrity-readout">100%</span></p>
+                <div class="progress-bar"><div id="integrity-bar"></div></div>
+                <p id="system-log" style="font-size: 0.75rem; margin-top: 10px; color: var(--accent);">System nominal.</p>
+            </div>
+        </div>
+
+        <!-- MAIN 2.5D VIEW -->
+        <div id="main-view">
+            <canvas id="game-canvas"></canvas>
+            
+            <!-- MODERATION HUD -->
+            <div id="mod-hud">
+                <h3 id="target-name">@Username</h3>
+                <p>Status: <span id="target-behavior">Idle</span> | Ping: <span id="target-ping">24ms</span></p>
+                <div class="mod-actions">
+                    <button id="btn-mute" class="mod-btn">MUTE</button>
+                    <button id="btn-kick" class="mod-btn">KICK</button>
+                    <button id="btn-ban" class="mod-btn danger">BAN</button>
+                    <button id="btn-close" class="mod-btn">CANCEL</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // SYSTEM CORE: STATE & CONFIG
+        // ==========================================
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height;
+        let centerX, centerY;
+        const FOCAL_LENGTH = 300; // 2.5D Projection perspective
+
+        const GameState = {
+            integrity: 100, // Drops if you ban humans. Rises slightly if you ban mimics.
+            corruptionLevel: 0,
+            entities: [],
+            selectedEntity: null,
+            time: 0,
+            logMsg: "Monitoring started."
+        };
+
+        const USERNAMES = ["Shadow_Realm", "xX_Sniper_Xx", "LunaEthereal", "DoggoLover99", "Admin_Abuse", "GamerGrill", "System_Process", "Null_Void", "TheRealOne", "GlitchInTheMatrix"];
+        const AVATAR_COLORS = ["#5865F2", "#ed4245", "#fee75c", "#43b581", "#eb459e", "#ffffff"];
+
+        function resizeCanvas() {
+            width = canvas.width = canvas.parentElement.clientWidth;
+            height = canvas.height = canvas.parentElement.clientHeight;
+            centerX = width / 2;
+            centerY = height / 2 + 100; // Lower horizon
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // ==========================================
+        // UI & CORRUPTION ENGINE
+        // ==========================================
+        const UI = {
+            integrityBar: document.getElementById('integrity-bar'),
+            integrityReadout: document.getElementById('integrity-readout'),
+            serverTitle: document.getElementById('server-title'),
+            crt: document.getElementById('crt'),
+            log: document.getElementById('system-log'),
+            hud: document.getElementById('mod-hud'),
+
+            update() {
+                this.integrityReadout.innerText = Math.floor(GameState.integrity) + "%";
+                this.integrityBar.style.width = GameState.integrity + "%";
+                
+                // Color scaling based on integrity
+                if (GameState.integrity > 70) this.integrityBar.style.backgroundColor = "#43b581"; // Green
+                else if (GameState.integrity > 30) this.integrityBar.style.backgroundColor = "#fee75c"; // Yellow
+                else this.integrityBar.style.backgroundColor = "#ed4245"; // Red
+
+                this.log.innerText = GameState.logMsg;
+
+                // Visual Corruption
+                GameState.corruptionLevel = 100 - GameState.integrity;
+                document.documentElement.style.setProperty('--crt-opacity', 0.1 + (GameState.corruptionLevel * 0.005));
+                
+                if (GameState.corruptionLevel > 50 && Math.random() > 0.95) {
+                    this.serverTitle.classList.add('glitch');
+                    this.serverTitle.innerText = Math.random() > 0.5 ? "D3c@y1ng_R34lm" : "YOU CANNOT HIDE";
+                } else {
+                    this.serverTitle.classList.remove('glitch');
+                    this.serverTitle.innerText = "Decaying_Realm";
+                }
+            },
+            
+            showLog(msg) {
+                GameState.logMsg = msg;
+            },
+
+            openModHUD(entity) {
+                GameState.selectedEntity = entity;
+                document.getElementById('target-name').innerText = "@" + entity.name;
+                document.getElementById('target-behavior').innerText = entity.state;
+                document.getElementById('target-ping').innerText = Math.floor(entity.ping) + "ms";
+                
+                // Glitch the name if it's highly corrupted
+                if(GameState.corruptionLevel > 60 && entity.isMimic) {
+                     document.getElementById('target-ping').innerText = "ERR_NO_HEARTBEAT";
+                }
+                
+                this.hud.classList.add('active');
+            },
+
+            closeModHUD() {
+                GameState.selectedEntity = null;
+                this.hud.classList.remove('active');
+            }
+        };
+
+        // ==========================================
+        // ENTITY SYSTEM (2.5D AVATARS)
+        // ==========================================
+        class Entity {
+            constructor() {
+                this.id = Math.random().toString(36).substr(2, 9);
+                this.name = USERNAMES[Math.floor(Math.random() * USERNAMES.length)] + Math.floor(Math.random()*100);
+                this.color = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
+                
+                // 3D Space coordinates
+                this.x = (Math.random() - 0.5) * 800; // Left/Right
+                this.y = 0; // Up/Down (Floor level)
+                this.z = Math.random() * 800 + 100; // Depth
+
+                // Movement Targets
+                this.targetX = this.x;
+                this.targetZ = this.z;
+
+                // Identity mechanics
+                this.isMimic = Math.random() > 0.6; // 40% chance to be a mimic
+                this.state = "Idle";
+                this.ping = this.isMimic ? 5 + Math.random()*10 : 20 + Math.random()*60; // Mimics have suspicious pings
+                
+                this.isMuted = false;
+                
+                // 2D Screen projection coords (calculated during render)
+                this.screenX = 0;
+                this.screenY = 0;
+                this.scale = 1;
+                this.radius = 30; // Base size
+            }
+
+            update() {
+                if (this.isMuted) {
+                    this.state = "Muted";
+                    return;
+                }
+
+                // Random wandering
+                if (Math.random() > 0.98) {
+                    this.targetX += (Math.random() - 0.5) * 300;
+                    this.targetZ += (Math.random() - 0.5) * 300;
+                    
+                    // Constrain bounds
+                    if(this.targetZ < 50) this.targetZ = 50;
+                    if(this.targetZ > 1000) this.targetZ = 1000;
+                    
+                    this.state = "Typing...";
+                } else if (Math.random() > 0.99) {
+                    this.state = "Idle";
+                }
+
+                // Mimic specific weird behavior
+                if (this.isMimic && GameState.corruptionLevel > 30) {
+                    if (Math.random() > 0.95) this.state = "Observing...";
+                    if (Math.random() > 0.99) this.x += (Math.random() - 0.5) * 100; // Teleport glitch
+                }
+
+                // Lerp movement
+                this.x += (this.targetX - this.x) * 0.02;
+                this.z += (this.targetZ - this.z) * 0.02;
+                
+                // Floating animation
+                this.y = Math.sin(GameState.time * 0.05 + this.z) * 10 - 20; 
+            }
+
+            draw() {
+                // 2.5D Projection Math
+                const scale = FOCAL_LENGTH / (FOCAL_LENGTH + this.z);
+                this.scale = scale;
+                this.screenX = centerX + this.x * scale;
+                this.screenY = centerY + this.y * scale;
+                
+                const drawRadius = this.radius * scale;
+
+                // Do not draw if behind camera
+                if (this.z < -FOCAL_LENGTH) return;
+
+                ctx.save();
+                
+                // Draw Shadow
+                ctx.beginPath();
+                ctx.ellipse(this.screenX, centerY + 20 * scale, drawRadius, drawRadius * 0.3, 0, 0, Math.PI * 2);
+                ctx.fillStyle = "rgba(0,0,0,0.5)";
+                ctx.fill();
+
+                // Draw Avatar Circle
+                ctx.beginPath();
+                ctx.arc(this.screenX, this.screenY, drawRadius, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                
+                // Corruption visual on mimics
+                if (this.isMimic && GameState.corruptionLevel > 50 && Math.random() > 0.8) {
+                    ctx.fillStyle = "#ff0000"; // Flash red
+                    this.screenX += (Math.random() - 0.5) * 10; // Jitter
+                }
+
+                ctx.fill();
+                ctx.lineWidth = 2 * scale;
+                ctx.strokeStyle = GameState.selectedEntity === this ? "#fff" : "#000";
+                ctx.stroke();
+
+                // Draw Username
+                ctx.fillStyle = "#fff";
+                ctx.font = `${Math.max(10, 16 * scale)}px Courier New`;
+                ctx.textAlign = "center";
+                let displayName = this.name;
+                if(this.isMimic && GameState.corruptionLevel > 70 && Math.random() > 0.5) displayName = "???";
+                ctx.fillText(displayName, this.screenX, this.screenY - drawRadius - (10 * scale));
+
+                // Draw State Bubble
+                if (this.state !== "Idle") {
+                    ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+                    const textWidth = ctx.measureText(this.state).width + 10;
+                    ctx.fillRect(this.screenX - textWidth/2, this.screenY - drawRadius - (35 * scale), textWidth, 20 * scale);
+                    ctx.fillStyle = "#aaa";
+                    ctx.fillText(this.state, this.screenX, this.screenY - drawRadius - (20 * scale));
+                }
+
+                ctx.restore();
+            }
+        }
+
+        // Initialize Entities
+        for(let i=0; i<8; i++) GameState.entities.push(new Entity());
+
+        // ==========================================
+        // RENDERER: 2.5D WORLD
+        // ==========================================
+        function drawGrid() {
+            ctx.strokeStyle = `rgba(88, 101, 242, ${0.2 + (GameState.corruptionLevel*0.003)})`; // Accent color grid
+            ctx.lineWidth = 1;
+
+            // Draw receding floor grid
+            for (let i = -1000; i <= 1000; i += 100) {
+                // Vertical lines (Z-axis)
+                let scale1 = FOCAL_LENGTH / (FOCAL_LENGTH + 0);
+                let scale2 = FOCAL_LENGTH / (FOCAL_LENGTH + 2000);
+                
+                ctx.beginPath();
+                ctx.moveTo(centerX + i * scale1, centerY);
+                ctx.lineTo(centerX + i * scale2, centerY + 100); // Horizon to floor
+                ctx.stroke();
+            }
+
+            for (let z = 50; z <= 2000; z += 150) {
+                // Horizontal lines (X-axis)
+                let scale = FOCAL_LENGTH / (FOCAL_LENGTH + z);
+                let yLine = centerY + 20 * scale; // Adjusting grid height illusion
+                
+                ctx.beginPath();
+                ctx.moveTo(centerX - 1000 * scale, yLine);
+                ctx.lineTo(centerX + 1000 * scale, yLine);
+                ctx.stroke();
+            }
+        }
+
+        // ==========================================
+        // MODERATION SYSTEM & INPUT
+        // ==========================================
+        // Click Raycasting/Hit detection
+        canvas.addEventListener('mousedown', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            // Sort by depth to click closest entity first
+            let sortedEntities = [...GameState.entities].sort((a, b) => a.z - b.z);
+            let clicked = false;
+
+            for (let ent of sortedEntities) {
+                let dx = mouseX - ent.screenX;
+                let dy = mouseY - ent.screenY;
+                let distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance < ent.radius * ent.scale) {
+                    UI.openModHUD(ent);
+                    clicked = true;
+                    break;
+                }
+            }
+
+            if (!clicked) {
+                UI.closeModHUD();
+            }
+        });
+
+        // Mod Action Buttons
+        document.getElementById('btn-close').onclick = () => UI.closeModHUD();
+        
+        document.getElementById('btn-mute').onclick = () => {
+            if (!GameState.selectedEntity) return;
+            GameState.selectedEntity.isMuted = true;
+            UI.showLog(`Muted user @${GameState.selectedEntity.name} for 1 hour.`);
+            UI.closeModHUD();
+        };
+
+        document.getElementById('btn-kick').onclick = () => {
+            if (!GameState.selectedEntity) return;
+            let ent = GameState.selectedEntity;
+            GameState.entities = GameState.entities.filter(e => e !== ent);
+            
+            // Minor consequences
+            if (!ent.isMimic) GameState.integrity -= 5; 
+            
+            UI.showLog(`Kicked @${ent.name} from server.`);
+            UI.closeModHUD();
+        };
+
+        document.getElementById('btn-ban').onclick = () => {
+            if (!GameState.selectedEntity) return;
+            let ent = GameState.selectedEntity;
+            GameState.entities = GameState.entities.filter(e => e !== ent);
+            
+            // Major consequences (The Horror Hook)
+            if (ent.isMimic) {
+                UI.showLog(`Banned Entity. System stabilizes slightly.`);
+                GameState.integrity = Math.min(100, GameState.integrity + 10);
+            } else {
+                UI.showLog(`FATAL ERROR: Banned legitimate user. System destabilizing.`);
+                GameState.integrity -= 25;
+                triggerGlitchEvent();
+            }
+            
+            UI.closeModHUD();
+        };
+
+        function triggerGlitchEvent() {
+            // Screen shake
+            canvas.style.transform = "translate(10px, 10px)";
+            setTimeout(() => canvas.style.transform = "translate(-10px, -10px)", 50);
+            setTimeout(() => canvas.style.transform = "translate(0, 0)", 100);
+
+            // Spawn new mimic
+            let mimic = new Entity();
+            mimic.isMimic = true;
+            GameState.entities.push(mimic);
+        }
+
+        // ==========================================
+        // MAIN GAME LOOP
+        // ==========================================
+        function gameLoop() {
+            // Clear screen
+            ctx.clearRect(0, 0, width, height);
+
+            // Draw Background environment
+            drawGrid();
+
+            // Update & Sort Entities by Z-depth (Back to front)
+            GameState.entities.sort((a, b) => b.z - a.z);
+            
+            for (let ent of GameState.entities) {
+                ent.update();
+                ent.draw();
+            }
+
+            // Continuous environment logic
+            GameState.time++;
+            UI.update();
+
+            // End game state logic
+            if (GameState.integrity <= 0) {
+                ctx.fillStyle = "rgba(255, 0, 0, 0.8)";
+                ctx.fillRect(0, 0, width, height);
+                ctx.fillStyle = "white";
+                ctx.font = "40px Courier New";
+                ctx.textAlign = "center";
+                ctx.fillText("SERVER COMPROMISED. YOU HAVE BEEN REVOKED.", centerX, centerY);
+                return; // Stop loop
+            }
+
+            // System randomly spawns users over time to maintain population
+            if (GameState.entities.length < 10 && Math.random() > 0.995) {
+                GameState.entities.push(new Entity());
+                UI.showLog("New user joined the channel.");
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Start
+        gameLoop();
+
+    </script>
+</body>
+</html>
